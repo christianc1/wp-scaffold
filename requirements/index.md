@@ -16,14 +16,18 @@ Requirements are organized in a three-level hierarchy:
 
 Defines the content model for the WordPress site, including custom post types and taxonomies.
 
-- [Post Types](/information-architecture/post-types/)
-- [Taxonomies](/information-architecture/taxonomies/)
+**Post Types:**
+- [Event Custom Post Type](/information-architecture/post-types/cpt-event.prd)
+
+**Taxonomies:**
+- [Event Venue Taxonomy](/information-architecture/taxonomies/tax-event-venue.prd)
 
 ### Blocks
 
 Custom Gutenberg blocks for content editing and display.
 
-- [Event Blocks](/blocks/event-blocks/)
+**Event Blocks:**
+- [Event Map Block](/blocks/event-blocks/event-map-block.prd)
 
 ## PRD Format
 
