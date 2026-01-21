@@ -1,0 +1,86 @@
+/**
+ * VitePress Dark Purple Theme
+ *
+ * Overrides default VitePress CSS variables for a dark-only
+ * site with purple accent colors (fueled.com inspired).
+ *
+ * Reference: https://github.com/vuejs/vitepress/blob/main/src/client/theme-default/styles/vars.css
+ */
+
+:root {
+  /* Purple brand colors - premium/professional, not neon */
+  --vp-c-brand-1: #c8abfa;  /* Light purple - links, highlights */
+  --vp-c-brand-2: #a879e6;  /* Medium purple - hover states */
+  --vp-c-brand-3: #8e5cd9;  /* Dark purple - active/pressed */
+  --vp-c-brand-soft: rgba(200, 171, 250, 0.14);
+
+  /* Dark backgrounds (black, not default dark gray) */
+  --vp-c-bg: #0a0a0a;
+  --vp-c-bg-alt: #111111;
+  --vp-c-bg-elv: #1a1a1a;
+  --vp-c-bg-soft: #1a1a1a;
+
+  /* White text on black */
+  --vp-c-text-1: #ffffff;
+  --vp-c-text-2: #d0d0d0;
+  --vp-c-text-3: #888888;
+
+  /* Border colors for dark theme */
+  --vp-c-border: #2a2a2a;
+  --vp-c-divider: #2a2a2a;
+  --vp-c-gutter: #1a1a1a;
+
+  /* Sidebar specific */
+  --vp-sidebar-bg-color: var(--vp-c-bg);
+
+  /* Code block styling */
+  --vp-code-block-bg: #1a1a1a;
+  --vp-code-line-highlight-color: rgba(200, 171, 250, 0.08);
+}
+
+/* Hide light mode toggle - dark only site */
+.VPSwitch {
+  display: none !important;
+}
+
+/* Hide the appearance toggle container entirely */
+.VPNavBarAppearance {
+  display: none !important;
+}
+
+/* Ensure body uses dark bg */
+html {
+  background-color: var(--vp-c-bg);
+}
+
+/* Ensure proper dark styling even without .dark class */
+body {
+  background-color: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+}
+
+/* Sidebar link hover styling */
+.VPSidebarItem.level-0 .item > .VPLink:hover .text,
+.VPSidebarItem.level-1 .item > .VPLink:hover .text,
+.VPSidebarItem.level-2 .item > .VPLink:hover .text {
+  color: var(--vp-c-brand-1);
+}
+
+/* Active sidebar item */
+.VPSidebarItem.is-active > .item > .VPLink > .text {
+  color: var(--vp-c-brand-1);
+}
+
+/* Nav link hover */
+.VPNavBarMenuLink:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* Search box styling */
+.VPLocalSearchBox {
+  --vp-local-search-bg: var(--vp-c-bg-elv);
+  --vp-local-search-result-bg: var(--vp-c-bg-alt);
+  --vp-local-search-result-border: var(--vp-c-border);
+  --vp-local-search-highlight-bg: var(--vp-c-brand-soft);
+  --vp-local-search-highlight-text: var(--vp-c-brand-1);
+}
