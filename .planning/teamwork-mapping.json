@@ -1,25 +1,70 @@
 {
-  "version": "1.0",
-  "description": "Maps PRD file paths to Teamwork task IDs for sync",
-  "lastUpdated": null,
-  "mappings": [
-    {
-      "prdPath": "requirements/blocks/event-blocks/event-map-block.prd.md",
-      "teamworkTaskId": null,
-      "lastSynced": null,
-      "status": "unmapped"
+  "version": "2.0",
+  "description": "Hierarchical mapping of requirements structure to Teamwork entities",
+  "projectId": null,
+  "lastUpdated": "2026-01-22T21:14:51Z",
+  "domains": {
+    "blocks": {
+      "name": "Blocks",
+      "path": "requirements/blocks",
+      "teamworkTasklistId": null,
+      "status": "unmapped",
+      "epics": {
+        "event-blocks": {
+          "name": "Event Blocks",
+          "path": "requirements/blocks/event-blocks",
+          "teamworkTaskId": null,
+          "status": "unmapped",
+          "prds": {
+            "event-map-block": {
+              "name": "Event Map Block",
+              "path": "requirements/blocks/event-blocks/event-map-block.prd.md",
+              "teamworkTaskId": 19763502,
+              "status": "synced",
+              "lastSynced": "2026-01-22T20:36:34.693Z"
+            }
+          }
+        }
+      }
     },
-    {
-      "prdPath": "requirements/information-architecture/post-types/cpt-event.prd.md",
-      "teamworkTaskId": null,
-      "lastSynced": null,
-      "status": "unmapped"
-    },
-    {
-      "prdPath": "requirements/information-architecture/taxonomies/tax-event-venue.prd.md",
-      "teamworkTaskId": null,
-      "lastSynced": null,
-      "status": "unmapped"
+    "information-architecture": {
+      "name": "Information Architecture",
+      "path": "requirements/information-architecture",
+      "teamworkTasklistId": null,
+      "status": "unmapped",
+      "epics": {
+        "post-types": {
+          "name": "Post Types",
+          "path": "requirements/information-architecture/post-types",
+          "teamworkTaskId": null,
+          "status": "unmapped",
+          "prds": {
+            "cpt-event": {
+              "name": "Event Custom Post Type",
+              "path": "requirements/information-architecture/post-types/cpt-event.prd.md",
+              "teamworkTaskId": 19763503,
+              "status": "synced",
+              "lastSynced": "2026-01-22T20:36:35.378Z"
+            }
+          }
+        },
+        "taxonomies": {
+          "name": "Taxonomies",
+          "path": "requirements/information-architecture/taxonomies",
+          "teamworkTaskId": null,
+          "status": "unmapped",
+          "prds": {
+            "tax-event-venue": {
+              "name": "Event Venue Taxonomy",
+              "path": "requirements/information-architecture/taxonomies/tax-event-venue.prd.md",
+              "teamworkTaskId": 19763504,
+              "status": "synced",
+              "lastSynced": "2026-01-22T20:36:36.049Z"
+            }
+          }
+        }
+      }
     }
-  ]
+  },
+  "legacyMappings": []
 }
