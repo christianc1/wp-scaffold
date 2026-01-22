@@ -284,11 +284,31 @@ async function loadMappings() {
   const content = await readFile(MAPPING_FILE, 'utf-8');
   const data = JSON.parse(content);
 
-  // Validate PRD files exist for all mappings
-  for (const mapping of data.mappings) {
-    if (!existsSync(mapping.prdPath)) {
-      console.log(`  Warning: PRD file not found: ${mapping.prdPath}`);
-      mapping._skipReason = 'file_not_found';
+  // Check mapping version
+  const version = data.version || '1.0';
+
+  if (version === '2.0') {
+    // Hierarchical mappings - validate PRD paths exist
+    for (const domainSlug of Object.keys(data.domains || {})) {
+      const domain = data.domains[domainSlug];
+      for (const epicSlug of Object.keys(domain.epics || {})) {
+        const epic = domain.epics[epicSlug];
+        for (const prdSlug of Object.keys(epic.prds || {})) {
+          const prd = epic.prds[prdSlug];
+          if (!existsSync(prd.path)) {
+            console.log(`  Warning: PRD file not found: ${prd.path}`);
+            prd._skipReason = 'file_not_found';
+          }
+        }
+      }
+    }
+  } else {
+    // Legacy flat mappings - validate PRD files exist
+    for (const mapping of data.mappings || []) {
+      if (!existsSync(mapping.prdPath)) {
+        console.log(`  Warning: PRD file not found: ${mapping.prdPath}`);
+        mapping._skipReason = 'file_not_found';
+      }
     }
   }
 
@@ -299,19 +319,38 @@ async function loadMappings() {
  * Update mapping file with sync status
  */
 async function updateMappingStatus(mappingData) {
-  // Clean up internal fields before saving
-  const cleanMappings = mappingData.mappings.map((m) => {
-    const { _skipReason, ...clean } = m;
-    return clean;
-  });
+  const version = mappingData.version || '1.0';
 
-  const output = {
-    ...mappingData,
-    mappings: cleanMappings,
-    lastUpdated: new Date().toISOString(),
-  };
+  if (version === '2.0') {
+    // Hierarchical mappings - clean up internal fields
+    const output = { ...mappingData };
+    for (const domainSlug of Object.keys(output.domains || {})) {
+      const domain = output.domains[domainSlug];
+      for (const epicSlug of Object.keys(domain.epics || {})) {
+        const epic = domain.epics[epicSlug];
+        for (const prdSlug of Object.keys(epic.prds || {})) {
+          const prd = epic.prds[prdSlug];
+          delete prd._skipReason;
+        }
+      }
+    }
+    output.lastUpdated = new Date().toISOString();
+    await writeFile(MAPPING_FILE, JSON.stringify(output, null, 2) + '\n', 'utf-8');
+  } else {
+    // Legacy flat mappings - clean up internal fields
+    const cleanMappings = (mappingData.mappings || []).map((m) => {
+      const { _skipReason, ...clean } = m;
+      return clean;
+    });
 
-  await writeFile(MAPPING_FILE, JSON.stringify(output, null, 2) + '\n', 'utf-8');
+    const output = {
+      ...mappingData,
+      mappings: cleanMappings,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    await writeFile(MAPPING_FILE, JSON.stringify(output, null, 2) + '\n', 'utf-8');
+  }
 }
 
 /**
@@ -319,6 +358,252 @@ async function updateMappingStatus(mappingData) {
  */
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Process legacy flat mappings (version 1.0)
+ */
+async function syncLegacyMappings(mappingData) {
+  const { TEAMWORK_TASKLIST_ID } = process.env;
+  const canCreateTasks = Boolean(TEAMWORK_TASKLIST_ID);
+
+  if (!canCreateTasks) {
+    console.log('Note: TEAMWORK_TASKLIST_ID not set - will only update existing tasks\n');
+  } else {
+    console.log(`Task creation enabled (tasklist: ${TEAMWORK_TASKLIST_ID})\n`);
+  }
+
+  const mappings = mappingData.mappings || [];
+  if (mappings.length === 0) {
+    console.log('\nNo PRD mappings found.');
+    console.log('Edit .planning/teamwork-mapping.json to add PRD mappings.\n');
+    return { success: 0, errors: 0, skipped: 0 };
+  }
+
+  console.log(`Found ${mappings.length} PRD(s) to process.\n`);
+
+  let successCount = 0;
+  let errorCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 0; i < mappings.length; i++) {
+    const mapping = mappings[i];
+    const { prdPath, teamworkTaskId } = mapping;
+
+    if (mapping._skipReason === 'file_not_found') {
+      console.log(`[${i + 1}/${mappings.length}] Skipping (file not found): ${prdPath}\n`);
+      skippedCount++;
+      continue;
+    }
+
+    if (!teamworkTaskId && !canCreateTasks) {
+      console.log(`[${i + 1}/${mappings.length}] Skipping unmapped PRD: ${prdPath}`);
+      console.log('  (Set TEAMWORK_TASKLIST_ID to enable task creation)\n');
+      skippedCount++;
+      continue;
+    }
+
+    console.log(`[${i + 1}/${mappings.length}] Processing: ${prdPath}`);
+
+    try {
+      const content = await readPRDContent(prdPath);
+      const prdData = matter(await readFile(prdPath, 'utf-8'));
+      const taskName = prdData.data.title || path.basename(prdPath, '.prd.md');
+
+      if (!teamworkTaskId) {
+        console.log(`  Creating new task in tasklist ${TEAMWORK_TASKLIST_ID}...`);
+        const task = await createTeamworkTask(TEAMWORK_TASKLIST_ID, taskName, content);
+        mapping.teamworkTaskId = task.id;
+        mapping.status = 'synced';
+        mapping.lastSynced = new Date().toISOString();
+        console.log(`  Created task ID: ${task.id}`);
+        console.log('  Success\n');
+        successCount++;
+      } else {
+        console.log(`  Updating task ${teamworkTaskId}...`);
+        await updateTeamworkTask(teamworkTaskId, content);
+        mapping.status = 'synced';
+        mapping.lastSynced = new Date().toISOString();
+        console.log('  Success\n');
+        successCount++;
+      }
+
+      // Save after each successful operation
+      await updateMappingStatus(mappingData);
+    } catch (error) {
+      console.error(`  Failed: ${error.message}\n`);
+      mapping.status = 'error';
+      mapping.lastSynced = new Date().toISOString();
+      await updateMappingStatus(mappingData);
+      errorCount++;
+    }
+
+    if (i < mappings.length - 1) {
+      await sleep(RATE_LIMIT_DELAY);
+    }
+  }
+
+  return { success: successCount, errors: errorCount, skipped: skippedCount };
+}
+
+/**
+ * Process hierarchical mappings (version 2.0)
+ */
+async function syncHierarchicalMappings(mappingData) {
+  const { TEAMWORK_PROJECT_ID } = process.env;
+  const projectId = mappingData.projectId || TEAMWORK_PROJECT_ID;
+
+  if (!projectId) {
+    console.error('ERROR: TEAMWORK_PROJECT_ID required for hierarchical sync\n');
+    console.error('Set TEAMWORK_PROJECT_ID in .env or projectId in mapping file.\n');
+    process.exit(1);
+  }
+
+  console.log(`Hierarchical sync mode (project: ${projectId})\n`);
+
+  // Get existing tasklists for deduplication
+  let existingTasklists = [];
+  try {
+    console.log('Fetching existing tasklists...');
+    existingTasklists = await getTeamworkTasklists(projectId);
+    console.log(`Found ${existingTasklists.length} existing tasklist(s)\n`);
+  } catch (error) {
+    console.log(`  Warning: Could not fetch tasklists: ${error.message}`);
+    console.log('  Will create new tasklists without deduplication\n');
+  }
+
+  let successCount = 0;
+  let errorCount = 0;
+  let skippedCount = 0;
+
+  const domains = mappingData.domains || {};
+  const domainSlugs = Object.keys(domains);
+
+  if (domainSlugs.length === 0) {
+    console.log('\nNo domains found in mapping.');
+    console.log('Run with --discover to populate from requirements/ directory.\n');
+    return { success: 0, errors: 0, skipped: 0 };
+  }
+
+  for (const domainSlug of domainSlugs) {
+    const domain = domains[domainSlug];
+    console.log(`\nProcessing domain: ${domain.name}`);
+
+    // Create/get tasklist for domain
+    if (!domain.teamworkTasklistId) {
+      // Check if tasklist already exists by name
+      const existing = existingTasklists.find(
+        (tl) => tl.name.toLowerCase() === domain.name.toLowerCase()
+      );
+
+      if (existing) {
+        domain.teamworkTasklistId = existing.id;
+        domain.status = 'synced';
+        console.log(`  Found existing tasklist: ${existing.id}`);
+        await updateMappingStatus(mappingData);
+      } else {
+        try {
+          console.log(`  Creating tasklist: ${domain.name}...`);
+          await sleep(RATE_LIMIT_DELAY);
+          const tasklist = await createTeamworkTasklist(projectId, domain.name);
+          domain.teamworkTasklistId = tasklist.id;
+          domain.status = 'synced';
+          console.log(`  Created tasklist ID: ${tasklist.id}`);
+          await updateMappingStatus(mappingData);
+        } catch (error) {
+          console.error(`  Failed to create tasklist: ${error.message}`);
+          domain.status = 'error';
+          await updateMappingStatus(mappingData);
+          errorCount++;
+          continue; // Skip this domain's epics and PRDs
+        }
+      }
+    } else {
+      console.log(`  Using tasklist: ${domain.teamworkTasklistId}`);
+    }
+
+    const tasklistId = domain.teamworkTasklistId;
+    const epics = domain.epics || {};
+    const epicSlugs = Object.keys(epics);
+
+    for (const epicSlug of epicSlugs) {
+      const epic = epics[epicSlug];
+      console.log(`  Processing epic: ${epic.name}`);
+
+      // Create parent task for epic
+      if (!epic.teamworkTaskId) {
+        try {
+          console.log(`    Creating parent task: ${epic.name}...`);
+          await sleep(RATE_LIMIT_DELAY);
+          const epicDescription = `Epic: ${epic.name}\nPath: ${epic.path}`;
+          const task = await createTeamworkTask(tasklistId, epic.name, epicDescription);
+          epic.teamworkTaskId = task.id;
+          epic.status = 'synced';
+          console.log(`    Created task ID: ${task.id}`);
+          await updateMappingStatus(mappingData);
+        } catch (error) {
+          console.error(`    Failed to create epic task: ${error.message}`);
+          epic.status = 'error';
+          await updateMappingStatus(mappingData);
+          errorCount++;
+          continue; // Skip this epic's PRDs
+        }
+      } else {
+        console.log(`    Using parent task: ${epic.teamworkTaskId}`);
+      }
+
+      const parentTaskId = epic.teamworkTaskId;
+      const prds = epic.prds || {};
+      const prdSlugs = Object.keys(prds);
+      let prdIndex = 0;
+
+      for (const prdSlug of prdSlugs) {
+        const prd = prds[prdSlug];
+        prdIndex++;
+
+        if (prd._skipReason === 'file_not_found') {
+          console.log(`    [${prdIndex}/${prdSlugs.length}] Skipping (file not found): ${prd.name}`);
+          skippedCount++;
+          continue;
+        }
+
+        try {
+          const content = await readPRDContent(prd.path);
+
+          if (!prd.teamworkTaskId) {
+            // Create subtask
+            console.log(`    [${prdIndex}/${prdSlugs.length}] Creating subtask: ${prd.name}`);
+            await sleep(RATE_LIMIT_DELAY);
+            const subtask = await createTeamworkSubtask(tasklistId, parentTaskId, prd.name, content);
+            prd.teamworkTaskId = subtask.id;
+            prd.status = 'synced';
+            prd.lastSynced = new Date().toISOString();
+            console.log(`    Success - subtask ID: ${subtask.id}`);
+            await updateMappingStatus(mappingData);
+            successCount++;
+          } else {
+            // Update existing subtask
+            console.log(`    [${prdIndex}/${prdSlugs.length}] Updating subtask: ${prd.name}`);
+            await sleep(RATE_LIMIT_DELAY);
+            await updateTeamworkTask(prd.teamworkTaskId, content);
+            prd.status = 'synced';
+            prd.lastSynced = new Date().toISOString();
+            console.log(`    Success`);
+            await updateMappingStatus(mappingData);
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`    Failed: ${error.message}`);
+          prd.status = 'error';
+          prd.lastSynced = new Date().toISOString();
+          await updateMappingStatus(mappingData);
+          errorCount++;
+        }
+      }
+    }
+  }
+
+  return { success: successCount, errors: errorCount, skipped: skippedCount };
 }
 
 /**
@@ -330,7 +615,7 @@ async function main() {
   console.log('========================================\n');
 
   // Validate environment
-  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME, TEAMWORK_TASKLIST_ID } = process.env;
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
 
   if (!TEAMWORK_API_TOKEN || !TEAMWORK_SITE_NAME) {
     console.error('ERROR: Missing required environment variables\n');
@@ -341,108 +626,32 @@ async function main() {
     process.exit(1);
   }
 
-  // Check if task creation is enabled
-  const canCreateTasks = Boolean(TEAMWORK_TASKLIST_ID);
-
-  if (!canCreateTasks) {
-    console.log('Note: TEAMWORK_TASKLIST_ID not set - will only update existing tasks\n');
-  } else {
-    console.log(`Task creation enabled (tasklist: ${TEAMWORK_TASKLIST_ID})\n`);
-  }
-
   // Load mappings
   console.log('Loading mappings...');
   const mappingData = await loadMappings();
+  const version = mappingData.version || '1.0';
 
-  if (mappingData.mappings.length === 0) {
-    console.log('\nNo PRD mappings found.');
-    console.log('Edit .planning/teamwork-mapping.json to add PRD mappings.\n');
-    process.exit(0);
+  console.log(`Mapping version: ${version}\n`);
+
+  let results;
+
+  if (version === '2.0') {
+    // Hierarchical sync
+    results = await syncHierarchicalMappings(mappingData);
+  } else {
+    // Legacy flat sync
+    results = await syncLegacyMappings(mappingData);
   }
-
-  console.log(`Found ${mappingData.mappings.length} PRD(s) to process.\n`);
-
-  // Track results
-  let successCount = 0;
-  let errorCount = 0;
-  let skippedCount = 0;
-
-  // Process each mapping
-  for (let i = 0; i < mappingData.mappings.length; i++) {
-    const mapping = mappingData.mappings[i];
-    const { prdPath, teamworkTaskId } = mapping;
-
-    // Skip if file not found
-    if (mapping._skipReason === 'file_not_found') {
-      console.log(`[${i + 1}/${mappingData.mappings.length}] Skipping (file not found): ${prdPath}\n`);
-      skippedCount++;
-      continue;
-    }
-
-    // Skip unmapped PRDs if we can't create tasks
-    if (!teamworkTaskId && !canCreateTasks) {
-      console.log(`[${i + 1}/${mappingData.mappings.length}] Skipping unmapped PRD: ${prdPath}`);
-      console.log('  (Set TEAMWORK_TASKLIST_ID to enable task creation)\n');
-      skippedCount++;
-      continue;
-    }
-
-    console.log(`[${i + 1}/${mappingData.mappings.length}] Processing: ${prdPath}`);
-
-    try {
-      // Read PRD content
-      const content = await readPRDContent(prdPath);
-      const prdData = matter(await readFile(prdPath, 'utf-8'));
-      const taskName = prdData.data.title || path.basename(prdPath, '.prd.md');
-
-      if (!teamworkTaskId) {
-        // CREATE new task
-        console.log(`  Creating new task in tasklist ${TEAMWORK_TASKLIST_ID}...`);
-        const task = await createTeamworkTask(TEAMWORK_TASKLIST_ID, taskName, content);
-        mapping.teamworkTaskId = task.id;
-        mapping.status = 'synced';
-        mapping.lastSynced = new Date().toISOString();
-        console.log(`  Created task ID: ${task.id}`);
-        console.log('  Success\n');
-        successCount++;
-      } else {
-        // UPDATE existing task
-        console.log(`  Updating task ${teamworkTaskId}...`);
-        await updateTeamworkTask(teamworkTaskId, content);
-        mapping.status = 'synced';
-        mapping.lastSynced = new Date().toISOString();
-        console.log('  Success\n');
-        successCount++;
-      }
-    } catch (error) {
-      console.error(`  Failed: ${error.message}\n`);
-
-      // Update mapping status
-      mapping.status = 'error';
-      mapping.lastSynced = new Date().toISOString();
-
-      errorCount++;
-    }
-
-    // Rate limiting (except after last request)
-    if (i < mappingData.mappings.length - 1) {
-      await sleep(RATE_LIMIT_DELAY);
-    }
-  }
-
-  // Write updated mapping file
-  await updateMappingStatus(mappingData);
 
   // Print summary
-  console.log('========================================');
+  console.log('\n========================================');
   console.log('  Sync Complete');
   console.log('========================================');
-  console.log(`Success: ${successCount}`);
-  console.log(`Skipped: ${skippedCount}`);
-  console.log(`Errors:  ${errorCount}\n`);
+  console.log(`Success: ${results.success}`);
+  console.log(`Skipped: ${results.skipped}`);
+  console.log(`Errors:  ${results.errors}\n`);
 
-  // Exit with error code if any failures
-  if (errorCount > 0) {
+  if (results.errors > 0) {
     process.exit(1);
   }
 }
