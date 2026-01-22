@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { readFile, writeFile } from 'fs/promises';
 import matter from 'gray-matter';
 import { existsSync } from 'fs';
+import path from 'path';
 
 // Configuration constants
 const MAPPING_FILE = '.planning/teamwork-mapping.json';
@@ -118,6 +119,42 @@ async function updateTeamworkTask(taskId, content) {
 }
 
 /**
+ * Create a new Teamwork task via POST
+ */
+async function createTeamworkTask(tasklistId, name, content) {
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
+
+  const url = `https://${TEAMWORK_SITE_NAME}.teamwork.com/projects/api/v3/tasklists/${tasklistId}/tasks.json`;
+  const auth = Buffer.from(`${TEAMWORK_API_TOKEN}:xxx`).toString('base64');
+
+  const options = {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      task: {
+        name: name,
+        description: content,
+        descriptionContentType: 'TEXT',
+      },
+    }),
+  };
+
+  const response = await fetchWithRetry(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  // API returns { task: { id: 12345, ... } }
+  return data.task;
+}
+
+/**
  * Read and format PRD content with frontmatter
  */
 async function readPRDContent(prdPath) {
@@ -147,34 +184,34 @@ async function loadMappings() {
   const content = await readFile(MAPPING_FILE, 'utf-8');
   const data = JSON.parse(content);
 
-  // Filter to only mappings with valid task IDs
-  const validMappings = data.mappings.filter((m) => {
-    if (!m.teamworkTaskId) {
-      console.log(`  Skipping unmapped PRD: ${m.prdPath}`);
-      return false;
+  // Validate PRD files exist for all mappings
+  for (const mapping of data.mappings) {
+    if (!existsSync(mapping.prdPath)) {
+      console.log(`  Warning: PRD file not found: ${mapping.prdPath}`);
+      mapping._skipReason = 'file_not_found';
     }
+  }
 
-    // Validate PRD file exists
-    if (!existsSync(m.prdPath)) {
-      console.log(`  Warning: PRD file not found: ${m.prdPath}`);
-      return false;
-    }
-
-    return true;
-  });
-
-  return {
-    ...data,
-    mappings: validMappings,
-  };
+  return data;
 }
 
 /**
  * Update mapping file with sync status
  */
 async function updateMappingStatus(mappingData) {
-  mappingData.lastUpdated = new Date().toISOString();
-  await writeFile(MAPPING_FILE, JSON.stringify(mappingData, null, 2) + '\n', 'utf-8');
+  // Clean up internal fields before saving
+  const cleanMappings = mappingData.mappings.map((m) => {
+    const { _skipReason, ...clean } = m;
+    return clean;
+  });
+
+  const output = {
+    ...mappingData,
+    mappings: cleanMappings,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  await writeFile(MAPPING_FILE, JSON.stringify(output, null, 2) + '\n', 'utf-8');
 }
 
 /**
@@ -193,7 +230,7 @@ async function main() {
   console.log('========================================\n');
 
   // Validate environment
-  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME, TEAMWORK_TASKLIST_ID } = process.env;
 
   if (!TEAMWORK_API_TOKEN || !TEAMWORK_SITE_NAME) {
     console.error('ERROR: Missing required environment variables\n');
@@ -204,45 +241,81 @@ async function main() {
     process.exit(1);
   }
 
+  // Check if task creation is enabled
+  const canCreateTasks = Boolean(TEAMWORK_TASKLIST_ID);
+
+  if (!canCreateTasks) {
+    console.log('Note: TEAMWORK_TASKLIST_ID not set - will only update existing tasks\n');
+  } else {
+    console.log(`Task creation enabled (tasklist: ${TEAMWORK_TASKLIST_ID})\n`);
+  }
+
   // Load mappings
   console.log('Loading mappings...');
   const mappingData = await loadMappings();
 
   if (mappingData.mappings.length === 0) {
-    console.log('\nNo mappings with valid task IDs to sync.');
-    console.log('Edit .planning/teamwork-mapping.json to add task IDs.\n');
+    console.log('\nNo PRD mappings found.');
+    console.log('Edit .planning/teamwork-mapping.json to add PRD mappings.\n');
     process.exit(0);
   }
 
-  console.log(`Found ${mappingData.mappings.length} PRD(s) to sync.\n`);
+  console.log(`Found ${mappingData.mappings.length} PRD(s) to process.\n`);
 
   // Track results
   let successCount = 0;
   let errorCount = 0;
+  let skippedCount = 0;
 
   // Process each mapping
   for (let i = 0; i < mappingData.mappings.length; i++) {
     const mapping = mappingData.mappings[i];
     const { prdPath, teamworkTaskId } = mapping;
 
-    console.log(`[${i + 1}/${mappingData.mappings.length}] Syncing: ${prdPath}`);
-    console.log(`  Task ID: ${teamworkTaskId}`);
+    // Skip if file not found
+    if (mapping._skipReason === 'file_not_found') {
+      console.log(`[${i + 1}/${mappingData.mappings.length}] Skipping (file not found): ${prdPath}\n`);
+      skippedCount++;
+      continue;
+    }
+
+    // Skip unmapped PRDs if we can't create tasks
+    if (!teamworkTaskId && !canCreateTasks) {
+      console.log(`[${i + 1}/${mappingData.mappings.length}] Skipping unmapped PRD: ${prdPath}`);
+      console.log('  (Set TEAMWORK_TASKLIST_ID to enable task creation)\n');
+      skippedCount++;
+      continue;
+    }
+
+    console.log(`[${i + 1}/${mappingData.mappings.length}] Processing: ${prdPath}`);
 
     try {
       // Read PRD content
       const content = await readPRDContent(prdPath);
+      const prdData = matter(await readFile(prdPath, 'utf-8'));
+      const taskName = prdData.data.title || path.basename(prdPath, '.prd.md');
 
-      // Update Teamwork task
-      await updateTeamworkTask(teamworkTaskId, content);
-
-      // Update mapping status
-      mapping.status = 'synced';
-      mapping.lastSynced = new Date().toISOString();
-
-      console.log('  ✓ Success\n');
-      successCount++;
+      if (!teamworkTaskId) {
+        // CREATE new task
+        console.log(`  Creating new task in tasklist ${TEAMWORK_TASKLIST_ID}...`);
+        const task = await createTeamworkTask(TEAMWORK_TASKLIST_ID, taskName, content);
+        mapping.teamworkTaskId = task.id;
+        mapping.status = 'synced';
+        mapping.lastSynced = new Date().toISOString();
+        console.log(`  Created task ID: ${task.id}`);
+        console.log('  Success\n');
+        successCount++;
+      } else {
+        // UPDATE existing task
+        console.log(`  Updating task ${teamworkTaskId}...`);
+        await updateTeamworkTask(teamworkTaskId, content);
+        mapping.status = 'synced';
+        mapping.lastSynced = new Date().toISOString();
+        console.log('  Success\n');
+        successCount++;
+      }
     } catch (error) {
-      console.error(`  ✗ Failed: ${error.message}\n`);
+      console.error(`  Failed: ${error.message}\n`);
 
       // Update mapping status
       mapping.status = 'error';
@@ -265,6 +338,7 @@ async function main() {
   console.log('  Sync Complete');
   console.log('========================================');
   console.log(`Success: ${successCount}`);
+  console.log(`Skipped: ${skippedCount}`);
   console.log(`Errors:  ${errorCount}\n`);
 
   // Exit with error code if any failures
