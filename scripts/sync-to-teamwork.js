@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import 'dotenv/config';
-import { readFile, writeFile } from 'fs/promises';
+import { readFile, writeFile, readdir } from 'fs/promises';
 import matter from 'gray-matter';
 import { existsSync } from 'fs';
 import path from 'path';
 
 // Configuration constants
+const REQUIREMENTS_DIR = 'requirements';
+
 const MAPPING_FILE = '.planning/teamwork-mapping.json';
 const RATE_LIMIT_DELAY = 400; // ms (150 req/min = ~400ms between)
 const MAX_RETRIES = 3;
@@ -607,6 +609,177 @@ async function syncHierarchicalMappings(mappingData) {
 }
 
 /**
+ * Convert slug to human-readable name
+ */
+function humanize(slug) {
+  return slug
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Get title from index.md or PRD frontmatter
+ */
+async function getTitleFromFile(filePath) {
+  try {
+    if (!existsSync(filePath)) {
+      return null;
+    }
+    const content = await readFile(filePath, 'utf-8');
+    const { data } = matter(content);
+    return data.title || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Discover requirements structure and build/update mapping file
+ */
+async function discoverRequirements() {
+  console.log('\n========================================');
+  console.log('  Teamwork PRD Sync - Discovery Mode');
+  console.log('========================================\n');
+
+  console.log('Discovering requirements structure...\n');
+
+  // Load existing mapping if present (to preserve Teamwork IDs)
+  let existingMapping = { domains: {}, legacyMappings: [] };
+  if (existsSync(MAPPING_FILE)) {
+    try {
+      const content = await readFile(MAPPING_FILE, 'utf-8');
+      existingMapping = JSON.parse(content);
+      console.log('Found existing mapping file - will preserve Teamwork IDs\n');
+    } catch (error) {
+      console.log('Warning: Could not parse existing mapping file\n');
+    }
+  }
+
+  // Build new mapping structure
+  const newMapping = {
+    version: '2.0',
+    description: 'Hierarchical mapping of requirements structure to Teamwork entities',
+    projectId: existingMapping.projectId || null,
+    lastUpdated: new Date().toISOString(),
+    domains: {},
+    legacyMappings: existingMapping.legacyMappings || [],
+  };
+
+  // Check if requirements directory exists
+  if (!existsSync(REQUIREMENTS_DIR)) {
+    console.error(`ERROR: Requirements directory not found: ${REQUIREMENTS_DIR}\n`);
+    process.exit(1);
+  }
+
+  // Scan requirements directory for domains
+  const domainEntries = await readdir(REQUIREMENTS_DIR, { withFileTypes: true });
+  const domainFolders = domainEntries.filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith('.')
+  );
+
+  let domainCount = 0;
+  let epicCount = 0;
+  let prdCount = 0;
+
+  for (const domainEntry of domainFolders) {
+    const domainSlug = domainEntry.name;
+    const domainPath = path.join(REQUIREMENTS_DIR, domainSlug);
+    const domainIndexPath = path.join(domainPath, 'index.md');
+
+    // Get domain name from index.md or humanize slug
+    const domainTitle = (await getTitleFromFile(domainIndexPath)) || humanize(domainSlug);
+
+    // Preserve existing Teamwork IDs
+    const existingDomain = existingMapping.domains?.[domainSlug] || {};
+
+    const domain = {
+      name: domainTitle,
+      path: domainPath,
+      teamworkTasklistId: existingDomain.teamworkTasklistId || null,
+      status: existingDomain.teamworkTasklistId ? 'synced' : 'unmapped',
+      epics: {},
+    };
+
+    // Scan domain directory for epics (subdirectories)
+    const epicEntries = await readdir(domainPath, { withFileTypes: true });
+    const epicFolders = epicEntries.filter(
+      (entry) => entry.isDirectory() && !entry.name.startsWith('.')
+    );
+
+    let domainPrdCount = 0;
+
+    for (const epicEntry of epicFolders) {
+      const epicSlug = epicEntry.name;
+      const epicPath = path.join(domainPath, epicSlug);
+      const epicIndexPath = path.join(epicPath, 'index.md');
+
+      // Get epic name from index.md or humanize slug
+      const epicTitle = (await getTitleFromFile(epicIndexPath)) || humanize(epicSlug);
+
+      // Preserve existing Teamwork IDs
+      const existingEpic = existingDomain.epics?.[epicSlug] || {};
+
+      const epic = {
+        name: epicTitle,
+        path: epicPath,
+        teamworkTaskId: existingEpic.teamworkTaskId || null,
+        status: existingEpic.teamworkTaskId ? 'synced' : 'unmapped',
+        prds: {},
+      };
+
+      // Scan epic directory for PRD files (*.prd.md)
+      const prdEntries = await readdir(epicPath, { withFileTypes: true });
+      const prdFiles = prdEntries.filter(
+        (entry) => entry.isFile() && entry.name.endsWith('.prd.md')
+      );
+
+      for (const prdEntry of prdFiles) {
+        const prdFilename = prdEntry.name;
+        const prdSlug = prdFilename.replace('.prd.md', '');
+        const prdPath = path.join(epicPath, prdFilename);
+
+        // Get PRD name from frontmatter
+        const prdTitle = (await getTitleFromFile(prdPath)) || humanize(prdSlug);
+
+        // Preserve existing Teamwork IDs and sync status
+        const existingPrd = existingEpic.prds?.[prdSlug] || {};
+
+        epic.prds[prdSlug] = {
+          name: prdTitle,
+          path: prdPath,
+          teamworkTaskId: existingPrd.teamworkTaskId || null,
+          status: existingPrd.teamworkTaskId ? existingPrd.status || 'synced' : 'unmapped',
+          lastSynced: existingPrd.lastSynced || null,
+        };
+
+        prdCount++;
+        domainPrdCount++;
+      }
+
+      if (Object.keys(epic.prds).length > 0) {
+        domain.epics[epicSlug] = epic;
+        epicCount++;
+      }
+    }
+
+    if (Object.keys(domain.epics).length > 0) {
+      newMapping.domains[domainSlug] = domain;
+      domainCount++;
+      console.log(
+        `  - ${domainTitle} (${Object.keys(domain.epics).length} epic(s), ${domainPrdCount} PRD(s))`
+      );
+    }
+  }
+
+  // Write mapping file
+  await writeFile(MAPPING_FILE, JSON.stringify(newMapping, null, 2) + '\n', 'utf-8');
+
+  console.log(`\nFound ${domainCount} domain(s), ${epicCount} epic(s), ${prdCount} PRD(s)`);
+  console.log(`\nUpdated ${MAPPING_FILE}\n`);
+}
+
+/**
  * Main execution
  */
 async function main() {
@@ -656,9 +829,21 @@ async function main() {
   }
 }
 
-// Run main with error handling
-main().catch((error) => {
-  console.error('\nFATAL ERROR:', error.message);
-  console.error(error.stack);
-  process.exit(1);
-});
+// Check for --discover flag
+const args = process.argv.slice(2);
+const isDiscoverMode = args.includes('--discover');
+
+// Run appropriate mode with error handling
+if (isDiscoverMode) {
+  discoverRequirements().catch((error) => {
+    console.error('\nFATAL ERROR:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  });
+} else {
+  main().catch((error) => {
+    console.error('\nFATAL ERROR:', error.message);
+    console.error(error.stack);
+    process.exit(1);
+  });
+}
