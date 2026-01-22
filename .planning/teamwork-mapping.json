@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "description": "Maps PRD file paths to Teamwork task IDs for sync",
+  "lastUpdated": null,
+  "mappings": [
+    {
+      "prdPath": "requirements/blocks/event-blocks/event-map-block.prd.md",
+      "teamworkTaskId": null,
+      "lastSynced": null,
+      "status": "unmapped"
+    },
+    {
+      "prdPath": "requirements/information-architecture/post-types/cpt-event.prd.md",
+      "teamworkTaskId": null,
+      "lastSynced": null,
+      "status": "unmapped"
+    },
+    {
+      "prdPath": "requirements/information-architecture/taxonomies/tax-event-venue.prd.md",
+      "teamworkTaskId": null,
+      "lastSynced": null,
+      "status": "unmapped"
+    }
+  ]
+}
