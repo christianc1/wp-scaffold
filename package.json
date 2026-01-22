@@ -24,6 +24,7 @@
     "lint-style": "npm run lint-style --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "clean-dist": "npm run clean-dist --workspaces --if-present",
+    "sync:teamwork": "node scripts/sync-to-teamwork.js",
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
@@ -39,7 +40,10 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
-    "10up-toolkit": "^6.5.0"
+    "10up-toolkit": "^6.5.0",
+    "dotenv": "^17.2.3",
+    "glob": "^13.0.0",
+    "gray-matter": "^4.0.3"
   },
   "devDependencies": {
     "@wordpress/create-block": "4.55.0",
