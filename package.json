@@ -24,9 +24,9 @@
     "lint-style": "npm run lint-style --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "clean-dist": "npm run clean-dist --workspaces --if-present",
-    "docs:dev": "vitepress dev requirements",
-    "docs:build": "vitepress build requirements",
-    "docs:preview": "vitepress preview requirements"
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
   },
   "author": {
     "name": "10up",
