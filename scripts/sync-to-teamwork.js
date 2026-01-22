@@ -119,6 +119,106 @@ async function updateTeamworkTask(taskId, content) {
 }
 
 /**
+ * Get all tasklists for a project
+ */
+async function getTeamworkTasklists(projectId) {
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
+
+  const url = `https://${TEAMWORK_SITE_NAME}.teamwork.com/projects/api/v3/projects/${projectId}/tasklists.json`;
+  const auth = Buffer.from(`${TEAMWORK_API_TOKEN}:xxx`).toString('base64');
+
+  const options = {
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+  };
+
+  const response = await fetchWithRetry(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  // API returns { tasklists: [...] }
+  return data.tasklists || [];
+}
+
+/**
+ * Create a new Teamwork tasklist via POST
+ */
+async function createTeamworkTasklist(projectId, name) {
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
+
+  const url = `https://${TEAMWORK_SITE_NAME}.teamwork.com/projects/api/v3/projects/${projectId}/tasklists.json`;
+  const auth = Buffer.from(`${TEAMWORK_API_TOKEN}:xxx`).toString('base64');
+
+  const options = {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tasklist: {
+        name: name,
+      },
+    }),
+  };
+
+  const response = await fetchWithRetry(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  // API returns { tasklist: { id: 12345, ... } }
+  return data.tasklist;
+}
+
+/**
+ * Create a new Teamwork subtask via POST (task with parentTaskId)
+ */
+async function createTeamworkSubtask(tasklistId, parentTaskId, name, content) {
+  const { TEAMWORK_API_TOKEN, TEAMWORK_SITE_NAME } = process.env;
+
+  const url = `https://${TEAMWORK_SITE_NAME}.teamwork.com/projects/api/v3/tasklists/${tasklistId}/tasks.json`;
+  const auth = Buffer.from(`${TEAMWORK_API_TOKEN}:xxx`).toString('base64');
+
+  const options = {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      task: {
+        name: name,
+        description: content,
+        descriptionContentType: 'TEXT',
+        parentTaskId: parentTaskId,
+      },
+    }),
+  };
+
+  const response = await fetchWithRetry(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  // API returns { task: { id: 12345, ... } }
+  return data.task;
+}
+
+/**
  * Create a new Teamwork task via POST
  */
 async function createTeamworkTask(tasklistId, name, content) {
