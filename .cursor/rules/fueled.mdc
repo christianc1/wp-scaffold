@@ -1,0 +1,71 @@
+---
+description: Fueled Documentation-Driven Development workflow rules
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Fueled Workflow Rules
+
+This project uses **Fueled** — a documentation-driven development system.
+
+## Core Principle
+
+**PRD-first development:** Every feature must have an approved PRD before implementation begins.
+
+## Directory Structure
+
+```
+requirements/          # PRDs organized by domain/epic/feature
+├── index.md          # Root requirements index
+└── [domain]/
+    └── [epic]/
+        └── [feature].prd.md
+
+.planning/            # State, roadmap, phase plans
+├── STATE.md          # Project state tracking
+├── ROADMAP.md        # Implementation roadmap (when created)
+├── phases/           # Phase execution plans
+└── todos/            # Pending and completed todos
+
+.fueled/              # System configuration
+├── config.json       # Settings and paths
+├── STATUS.md         # Master status dashboard
+├── research/         # Research artifacts
+└── exports/          # Generated stakeholder docs
+```
+
+## Workflow Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/fueled:status` | View project dashboard |
+| `/fueled:new-prd [domain/epic/feature]` | Create new PRD |
+| `/fueled:review-prd` | Check PRD completeness |
+| `/fueled:approve-prd` | Mark PRD approved |
+| `/fueled:generate-stakeholder <type>` | Generate stakeholder doc |
+| `/fueled:create-roadmap` | Create implementation roadmap |
+| `/fueled:plan-phase` | Plan implementation phase |
+| `/fueled:execute-phase` | Execute planned phase |
+| `/fueled:validate-build` | Validate code matches PRD |
+
+## Before Writing Code
+
+1. Check if a PRD exists for this feature
+2. If no PRD, create one with `/fueled:new-prd`
+3. Get PRD approved before implementation
+4. Follow the phase plan for implementation order
+
+## Session Start
+
+Always read `.planning/STATE.md` first to understand:
+- Current position (phase, plan)
+- Recent decisions
+- Pending todos
+- Where to resume
+
+## After Completing Work
+
+Update `.planning/STATE.md` with:
+- New position
+- Decisions made
+- Any blockers discovered

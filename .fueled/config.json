@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "initialized": "2026-01-30T00:00:00.000Z",
+  "settings": {
+    "research_before_prd": true,
+    "stakeholder_types": ["exec", "pm", "dev"],
+    "auto_validate": true
+  },
+  "paths": {
+    "requirements": "requirements/",
+    "planning": ".planning/",
+    "research": ".fueled/research/",
+    "exports": ".fueled/exports/"
+  },
+  "status": {
+    "prds_total": 0,
+    "prds_approved": 0,
+    "phases_total": 0,
+    "phases_complete": 0,
+    "features_validated": 0
+  }
+}

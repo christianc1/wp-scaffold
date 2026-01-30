@@ -1,47 +1,52 @@
-# Product Requirements Documentation
+# Requirements Index
 
-This documentation contains Product Requirements Documents (PRDs) for the WordPress project, organized by domain and epic.
+**Project:** Mayo GBS WordPress
+**Created:** 2026-01-30 | **Updated:** 2026-01-30
 
-## Documentation Structure
+---
 
-Requirements are organized in a three-level hierarchy:
+## Overview
 
-- **Domain**: High-level area of functionality (e.g., Information Architecture, Blocks, REST API)
-- **Epic**: Related group of features within a domain (e.g., Post Types, Taxonomies, Event Blocks)
-- **Feature**: Individual PRD describing a specific feature or component
+| Metric      | Value |
+| ----------- | ----- |
+| Total PRDs  | 0     |
+| Approved    | 0     |
+| In Progress | 0     |
+| Draft       | 0     |
 
 ## Domains
 
-### Information Architecture
+_No domains yet. Create your first PRD with `/fueled:new-prd domain/epic/feature`._
 
-Defines the content model for the WordPress site, including custom post types and taxonomies.
+<!-- Domain structure:
+## [Domain Name]
 
-**Post Types:**
-- [Event Custom Post Type](/information-architecture/post-types/cpt-event.prd)
+| Epic | Feature | Status | PRD |
+|------|---------|--------|-----|
+| [epic] | [feature] | draft | [link](domain/epic/feature.prd.md) |
+-->
 
-**Taxonomies:**
-- [Event Venue Taxonomy](/information-architecture/taxonomies/tax-event-venue.prd)
+---
 
-### Blocks
+## Key Decisions
 
-Custom Gutenberg blocks for content editing and display.
+| Date | Decision | Rationale | PRD |
+| ---- | -------- | --------- | --- |
+| -    | -        | -         | -   |
 
-**Event Blocks:**
-- [Event Map Block](/blocks/event-blocks/event-map-block.prd)
+---
 
-## PRD Format
+## Project Context
 
-Each PRD follows a standard structure:
+**Core Value:** WordPress content management for Mayo GBS
 
-- **Description**: Overview of the feature and its purpose
-- **Acceptance Criteria**: Specific, testable requirements that define done
-- **Technical Approach**: Implementation details, architecture decisions, dependencies
-- **ADR (Architecture Decision Record)**: Key decisions made and their rationale
+**Target Users:**
+- Content editors
+- Site administrators
 
-## Status Definitions
+**Success Metrics:**
+- To be defined
 
-- **draft**: Initial planning, requirements gathering
-- **ready**: Requirements approved, ready for implementation
-- **in-progress**: Actively being developed
-- **done**: Implemented and verified
-- **blocked**: Cannot proceed due to dependency or blocker
+---
+
+_Managed by Fueled_
