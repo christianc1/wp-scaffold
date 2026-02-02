@@ -56,7 +56,7 @@ const sidebarOptions = {
   includeFolderIndexFile: false,
   collapsed: true,
   collapseDepth: 2,
-  sortMenusByFrontmatterOrder: false,
+  sortMenusByFrontmatterOrder: true,
   sortMenusOrderByDescending: false
 }
 
